@@ -230,6 +230,8 @@ test('the dedupe ledger expires and evicts', () => {
 
 test('workspaceNameOf falls back to the session id', () => {
   assert.equal(workspaceNameOf(session('s1', '/path/to/proj')), 'proj')
+  // A Windows path recorded in the header must resolve on any platform.
+  assert.equal(workspaceNameOf(session('s1', 'D:\\path\\to\\proj')), 'proj')
   assert.equal(workspaceNameOf({ id: 's7' }), 's7')
 })
 
