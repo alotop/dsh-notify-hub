@@ -45,6 +45,7 @@ const REQUIRED = [
   'lib/channels/cmcc.js',
   'README.md',
   'README.zh-CN.md',
+  'THIRD-PARTY-NOTICES.md',
   'LICENSE',
 ]
 
@@ -60,6 +61,7 @@ const FORBIDDEN_PREFIXES = [
 
 /** File names that must never reach the registry (local state, credentials, artifacts). */
 const FORBIDDEN_NAMES = [
+  '.env',
   'settings.yaml',
   'pack.json',
   'package-lock.json',

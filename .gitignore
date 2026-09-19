@@ -4,3 +4,9 @@ pack.json
 *.log
 *.tgz
 .dsh-*
+
+# Local live-check credentials. `.env.example` is the committed template; the
+# real `.env` must stay out of git history and out of the published tarball.
+.env
+.env.*
+!.env.example

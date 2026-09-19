@@ -149,7 +149,7 @@ A new bundle needs a **dsh web restart**; later installs/updates need
 
 ```powershell
 npm ci             # dev/test dependency only (@deepseek-ai/schemastery); DSH supplies it at runtime
-npm run check      # client-bundle guard + the whole test suite
+npm run check      # client-bundle guard + repository hygiene guard + the whole test suite
 npm run pack:check # audit what would be published to npm
 ```
 
@@ -170,6 +170,33 @@ One-time setup on npmjs.com (package → Settings → Trusted Publisher): reposi
 `alotop/dsh-notify-hub`, workflow `release.yml`, environment empty. To publish
 with a token instead, add an `NPM_TOKEN` secret and pass `registry-url` +
 `NODE_AUTH_TOKEN` to setup-node.
+
+### Credentials and local live checks
+
+This repository is **public**, which makes two rules non-negotiable:
+
+1. **Credentials live in `.env`** (already gitignored); tracked files carry only
+   obvious placeholders. `.env.example` is the committed template and every value
+   in it is fake.
+2. **Never put a real value — key, phone number, path, email — into a tracked
+   file**, including test fixtures and documentation examples. A value that
+   reaches git history cannot be removed reliably, and it may also ship in the npm
+   tarball.
+
+To exercise real providers, pass credentials through the environment instead of
+pasting them into code:
+
+```powershell
+Copy-Item .env.example .env   # fill in the channels you want to verify; others are skipped
+npm run live-check            # one real notification per configured channel, secrets masked
+```
+
+`npm run check` includes `check:hygiene` (`scripts/check-repo-hygiene.mjs`), which
+fails on Bark device keys, 移动新消息 API keys, phone numbers, API tokens, private
+keys, JWTs, concrete user-profile paths (`C:\Users\<real name>`, `/Users/…`,
+`/home/…`), email addresses, and any tracked `.env` file. Fixtures should use
+obvious fakes such as `EXAMPLEKEY1234`, `ak_replace_me`, `13800138000` and
+`/path/to/...`.
 
 ### Living with dsh-notify-bark
 
@@ -308,7 +335,11 @@ collector → hub → RPC read-back).
 * [dsh-notify-center](https://github.com/SingleOne/dsh-notify-center) (MIT) —
   event accumulation, completion gate, content rules, webhook presets, and
   cross-platform desktop delivery.
-* `@openclaw/cmcc-newmsg-channel` — the China Mobile 5G message transport.
+* `@openclaw/cmcc-newmsg-channel` — the China Mobile 5G message transport. That
+  package ships no licence, so this repository does not redistribute it: see
+  [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for exactly what was derived.
+
+Full copyright and licence details: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## License
 

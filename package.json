@@ -34,14 +34,17 @@
     "cordis.patch.yml",
     "README.md",
     "README.zh-CN.md",
+    "THIRD-PARTY-NOTICES.md",
     "LICENSE"
   ],
   "scripts": {
     "test": "node scripts/run-tests.mjs",
     "test:tap": "node --test tests/",
     "check:client": "node scripts/check-client.mjs",
-    "check": "node scripts/check-client.mjs && node scripts/run-tests.mjs",
-    "pack:check": "npm pack --dry-run --json > pack.json && node scripts/inspect-tarball.mjs"
+    "check:hygiene": "node scripts/check-repo-hygiene.mjs",
+    "check": "node scripts/check-client.mjs && node scripts/check-repo-hygiene.mjs && node scripts/run-tests.mjs",
+    "pack:check": "npm pack --dry-run --json > pack.json && node scripts/inspect-tarball.mjs",
+    "live-check": "node scripts/live-check.mjs"
   },
   "keywords": [
     "deepseek-harness",

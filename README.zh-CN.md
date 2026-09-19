@@ -122,8 +122,8 @@ dsh plugin --profile web add .\alotop-dsh-notify-hub-0.3.0.tgz
 ## 开发与发布
 
 ```powershell
-npm ci            # 只有开发/测试用依赖（@deepseek-ai/schemastery）；运行时由 DSH 提供
-npm run check     # 客户端 bundle 守卫 + 全部用例
+npm ci             # 只有开发/测试用依赖（@deepseek-ai/schemastery）；运行时由 DSH 提供
+npm run check      # 客户端 bundle 守卫 + 仓库隐私守卫 + 全部用例
 npm run pack:check # 审计将要发布到 npm 的 tarball 内容
 ```
 
@@ -137,6 +137,22 @@ git tag v0.3.0 && git push origin v0.3.0
 流程：校验 `tag` 与 `package.json` 版本一致 → `npm ci` → `npm run check` → `npm run pack:check` → `npm publish`（OIDC Trusted Publishing + provenance，仓库里不存 npm token）→ 自动创建 GitHub Release。`ci.yml` 在每次分支推送与 PR 上跑同样的检查，但**永不发布**。
 
 首次需要到 npmjs.com 的包设置里配置一次 Trusted Publisher：仓库 `alotop/dsh-notify-hub`、workflow `release.yml`、environment 留空。若改用令牌发布，加 `NPM_TOKEN` secret 并给 setup-node 传 `registry-url` + `NODE_AUTH_TOKEN`。
+
+### 凭据与本地联调（重要）
+
+本仓库**公开**，所以有两条硬规则：
+
+1. **凭据只放 `.env`**（已在 `.gitignore` 中），仓库内只允许占位值 —— `.env.example` 是提交的模板，里面的值全是假的。
+2. **不要把本机的真实值（密钥、手机号、路径、邮箱）写进任何被跟踪的文件** —— 包括测试 fixture 与文档示例。进过 git 历史的值无法可靠删除，还可能随 npm 包一起发出去。
+
+需要对着真实服务联调时，走环境变量而不是把值贴进代码：
+
+```powershell
+Copy-Item .env.example .env   # 填你要验证的通道，留空的通道会被跳过
+npm run live-check            # 每个已配置通道发一条真实通知，输出中的密钥一律脱敏
+```
+
+`npm run check` 里的 `check:hygiene`（`scripts/check-repo-hygiene.mjs`）会拦截：Bark 设备密钥、移动新消息 API Key、手机号、各类 API token、私钥、JWT、具体的用户目录路径（`C:\Users\<真实用户名>`、`/Users/…`、`/home/…`）、邮箱，以及任何被跟踪的 `.env` 文件。测试 fixture 里请使用 `EXAMPLEKEY1234`、`ak_replace_me`、`13800138000`、`/path/to/...` 这类明显的假值。
 
 ---
 
@@ -223,11 +239,12 @@ Host 端只依赖 Node 内置模块与 `@deepseek-ai/schemastery`（peer），�
 ## 测试
 
 ```powershell
-npm test          # 10 个文件 / 103 个用例（脚本串行跑，兼容受限环境）
-npm run check     # 先校验客户端 bundle，再跑测试
+npm test           # 11 个文件；脚本串行执行，兼容受限环境
+npm run check      # 客户端 bundle 守卫 + 仓库隐私守卫 + 全部用例
+npm run live-check # 可选：对真实服务各发一条通知（凭据来自 .env）
 ```
 
-覆盖范围：设置 schema 与脱敏视图、事件折叠与完成门控、规则与路由、HTTP 重试与脱敏、Bark/Webhook 载荷、Windows Toast 脚本转义、移动新消息握手/发送/心跳/重连/上传、hub 扇出与投递历史、RPC 校验，以及**客户端 bundle 的真实加载与渲染**，最后还有一组 `apply()` 级别的端到端用例（监听 → 采集 → 扇出 → RPC 读回）。
+覆盖范围：设置 schema 与脱敏视图、事件折叠与完成门控、规则与路由、HTTP 重试与脱敏、Bark/Webhook 载荷、Windows Toast 脚本转义、移动新消息握手/发送/心跳/重连/上传、hub 扇出与投递历史、RPC 校验、仓库隐私守卫（凭据形状扫描），以及**客户端 bundle 的真实加载与渲染**，最后还有一组 `apply()` 级别的端到端用例（监听 → 采集 → 扇出 → RPC 读回）。
 
 ---
 
@@ -242,7 +259,9 @@ npm run check     # 先校验客户端 bundle，再跑测试
 
 * [dsh-notify-bark](https://github.com/pc439527/dsh-notify-bark)（MIT）——Host 端事件监听、Bark 推送、脱敏设置页与 loopback RPC 的形态。
 * [dsh-notify-center](https://github.com/SingleOne/dsh-notify-center)（MIT）——事件聚合、完成门控、内容规则、多路 Webhook 与跨平台桌面通知。
-* `@openclaw/cmcc-newmsg-channel`——中国移动新消息传输协议。
+* `@openclaw/cmcc-newmsg-channel`——中国移动新消息传输协议（该包未附带许可证，本仓库不转载其代码，详见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)）。
+
+完整的版权与许可说明见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
 
 ## License
 
