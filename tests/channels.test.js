@@ -255,7 +255,11 @@ test('commandForPlatform builds the right command per platform', () => {
 
   const win = commandForPlatform('win32', env, settings)
   assert.equal(win.command, 'powershell.exe')
-  assert.ok(typeof win.stdin === 'string' && win.stdin.length > 0)
+  assert.equal(typeof win.script, 'string')
+  assert.ok(win.script.length > 0)
+  assert.equal('stdin' in win, false, 'the script must never be piped into the child')
+  assert.equal(win.args.includes('-Command'), false)
+  assert.equal(win.args.includes('-File'), false, 'the runner appends -File with the temp path')
 
   const mac = commandForPlatform('darwin', env, settings)
   assert.equal(mac.command, 'osascript')

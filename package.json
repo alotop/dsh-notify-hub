@@ -1,6 +1,6 @@
 {
   "name": "dsh-notify-hub",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "通知集合（Notification Hub）：DSH Host 端通知中枢，整合 Bark 推送、多路 Webhook（飞书/企微/钉钉/Slack/Discord/自定义）、原生桌面通知，并新增「移动新消息」5G 消息推送通道。设置页通过专用 RPC 读写 Host 配置，全部密钥脱敏不回传浏览器。",
   "license": "MIT",
   "type": "module",

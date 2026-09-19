@@ -243,8 +243,10 @@ collector → hub → RPC read-back).
 
 ## Known limitations
 
-* Windows desktop notifications run through `powershell.exe`; a policy that
-  blocks WinRT toasts falls back to a NotifyIcon balloon.
+* Windows desktop notifications run through `powershell.exe`. The script is written
+  to a temp `.ps1` and launched with `-File`, so **nothing is piped into the
+  child** — that form works even where a sandbox forbids pipes or extra process
+  handles. A policy that blocks WinRT toasts falls back to a NotifyIcon balloon.
 * Rich media needs a gateway that serves `/upload`; failures surface the server's
   own reason in the section.
 * 移动新消息 is outbound-only; replies from the phone are not consumed.

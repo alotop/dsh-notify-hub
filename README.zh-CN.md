@@ -195,7 +195,7 @@ npm run check     # 先校验客户端 bundle，再跑测试
 
 ## 已知限制
 
-* 桌面通知在 Windows 通过 `powershell.exe` 弹 Toast（首次会注册 AUMID 与快捷方式）；企业策略禁用 WinRT Toast 时自动回退气泡通知。
+* 桌面通知在 Windows 通过 `powershell.exe` 弹 Toast（首次会注册 AUMID 与快捷方式）；脚本站写入临时 `.ps1` 后以 `-File` 启动，**不经过任何管道**，因此在限制管道/进程句柄的沙箱环境里同样可用。企业策略禁用 WinRT Toast 时自动回退气泡通知。
 * 富媒体推送需网关支持 `/upload`；失败会在设置页显示服务端返回的原因。
 * 移动新消息为出站单向通道；不接受手机侧回复。
 * 设置页的「发送图片」需要填写**本机**绝对路径（Host 侧读取）。
