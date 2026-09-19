@@ -88,8 +88,8 @@ test('masking helpers never leak a full secret', () => {
   assert.deepEqual(maskSecret(''), { configured: false, masked: '' })
   assert.deepEqual(maskSecret('ab'), { configured: true, masked: '••••••••ab' })
   const masked = maskSecret('https://api.day.app/EXAMPLEKEY1234').masked
-  assert.ok(masked.endsWith('gAk'))
-  assert.ok(!masked.includes('z4Nrrc'))
+  assert.equal(masked, '••••••••1234')
+  assert.ok(!masked.includes('EXAMPLE'))
   assert.equal(maskRecipient('13800138000'), '138••••00')
   assert.equal(maskRecipient(''), '')
   assert.equal(maskRecipient('1234'), '1234')

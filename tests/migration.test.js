@@ -4,9 +4,11 @@ import assert from 'node:assert/strict'
 import { join } from 'node:path'
 import { readLegacyBarkUrl, settingsFilePath } from '../lib/migration.js'
 
+// Fixture values are entirely synthetic: a test must never carry a real
+// credential, even one that only ever existed on the author's machine.
 const documented = [
   'ui-onboarding:',
-  '  welcomeNoticeVersion: 2026-08-13.1',
+  '  welcomeNoticeVersion: 2026-01-01.1',
   'bark:',
   '  barkUrl: https://api.day.app/EXAMPLEKEY1234',
   '  events:',
