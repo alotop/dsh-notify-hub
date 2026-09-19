@@ -315,4 +315,15 @@ test('renderers produce bounded, localized bodies', () => {
   assert.equal(truncate('abcdef', 4), 'abc…')
   assert.equal(truncate('abc', 10), 'abc')
   assert.equal(markdownToPlainText('# 标题\n**粗体** `code`\n- 项'), '标题\n粗体 code\n• 项')
+  // A fenced block keeps its code but loses the fence and its language tag.
+  assert.equal(
+    markdownToPlainText('## 修复\n\n```ts\nconst ttl = 24\n```\n\n> 注意\n\n~~旧~~ [说明](https://x)'),
+    '修复\n\nconst ttl = 24\n\n注意\n\n旧 说明',
+  )
+  assert.equal(markdownToPlainText('```\nplain\n```'), 'plain')
+  const flattened = markdownToPlainText('已修改 `a.ts` 中的 **校验**逻辑\n\n1. 一\n2. 二\n- 三')
+  assert.equal(flattened, '已修改 a.ts 中的 校验逻辑\n\n• 一\n• 二\n• 三')
+  for (const marker of ['**', '`', '~~', '#']) {
+    assert.equal(flattened.includes(marker), false, `no ${marker} may survive`)
+  }
 })
