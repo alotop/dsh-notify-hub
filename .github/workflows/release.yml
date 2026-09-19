@@ -34,9 +34,14 @@ jobs:
         with:
           node-version: 22
 
-      # Trusted Publishing requires npm >= 11.5.1.
+      # Trusted Publishing requires npm >= 11.5.1. The version is echoed because
+      # `npm pack --json` changed shape between npm 11 and 12 without a major
+      # signal, and knowing which CLI a failed run used is what makes that
+      # class of breakage diagnosable from the log.
       - name: Use a recent npm
-        run: npm install -g npm@latest
+        run: |
+          npm install -g npm@latest
+          echo "npm $(npm --version) on node $(node --version)"
 
       - name: Install dev dependencies
         run: npm ci

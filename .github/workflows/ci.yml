@@ -21,6 +21,11 @@ jobs:
         with:
           node-version: 22
 
+      # Echo the toolchain: `npm pack --json` changed shape between npm 11 and 12,
+      # so a failing run must be attributable to the CLI that produced it.
+      - name: Report the toolchain
+        run: echo "npm $(npm --version) on node $(node --version)"
+
       # The Host half imports @deepseek-ai/schemastery for its settings schema.
       # DSH supplies it at runtime, so it is a devDependency here: it gives this
       # repository a reproducible `npm ci` (and a working `npm test` for anyone
