@@ -14,6 +14,8 @@ import {
   sanitizeBarkUrl,
   sanitizeEndpoint,
   settingsView,
+  webhookDefaults,
+  webhookSecurityOf,
 } from '../lib/settings.js'
 import { CMCC_DEFAULTS } from '../lib/types.js'
 
@@ -122,4 +124,35 @@ test('settingsView marks cmcc unconfigured without a recipient', () => {
   const view = settingsView(compileSettings({ cmcc: { apiKey: 'ak_abcdefghijkl' } }))
   assert.equal(view.cmcc.keyConfigured, true)
   assert.equal(view.cmcc.configured, false)
+})
+
+test('only 飞书 carries the bot security fields', () => {
+  const parsed = hubSettingsSchema({})
+  assert.deepEqual(parsed.webhooks.feishu, {
+    enabled: false,
+    url: '',
+    includeSummary: false,
+    keyword: '',
+    secret: '',
+  })
+  assert.deepEqual(parsed.webhooks.wecom, { enabled: false, url: '', includeSummary: false }, 'other providers get no fields')
+  assert.deepEqual(parsed.webhooks.dingtalk, { enabled: false, url: '', includeSummary: false })
+
+  // The view echoes the (non-secret) keyword and masks the signing secret.
+  const view = settingsView(compileSettings({
+    webhooks: { feishu: { enabled: true, url: 'https://open.feishu.cn/hook/1', keyword: 'dsh-notify-hub', secret: 'SIGNINGSECRET123' } },
+  }))
+  assert.equal(view.webhooks.feishu.keyword, 'dsh-notify-hub')
+  assert.equal(view.webhooks.feishu.secretConfigured, true)
+  assert.equal(view.webhooks.feishu.secretMasked, '••••••••T123')
+  assert.equal(JSON.stringify(view).includes('SIGNINGSECRET123'), false, 'the signing secret never rides the wire')
+  assert.equal('keyword' in view.webhooks.wecom, false)
+  assert.equal('secretConfigured' in view.webhooks.wecom, false)
+})
+
+test('webhookDefaults/webhookSecurityOf describe the capability table', () => {
+  assert.deepEqual(webhookSecurityOf('feishu'), { keyword: true, signature: true })
+  assert.deepEqual(webhookSecurityOf('slack'), {})
+  assert.deepEqual(webhookDefaults('feishu'), { enabled: false, url: '', includeSummary: false, keyword: '', secret: '' })
+  assert.deepEqual(webhookDefaults('slack'), { enabled: false, url: '', includeSummary: false })
 })

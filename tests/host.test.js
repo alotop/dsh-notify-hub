@@ -10,8 +10,26 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { apply } from '../lib/index.js'
+import { feishuSign } from '../lib/channels/webhook.js'
 import { DEFAULT_SETTINGS, deepMerge, hubSettingsSchema } from '../lib/settings.js'
 
+/**
+ * Hermetic `DSH_HOME`.
+ *
+ * `apply()` adopts a legacy Bark endpoint from `$DSH_HOME/settings.yaml` when the
+ * composition has none — correct in production, but it would make these tests
+ * depend on the developer's real settings file (and deliver to a real phone).
+ * Every test therefore runs against an empty home; the migration test seeds its
+ * own.
+ */
+const isolationHome = mkdtempSync(join(tmpdir(), 'notify-hub-isolation-'))
+const originalHome = process.env.DSH_HOME
+process.env.DSH_HOME = isolationHome
+test.after(() => {
+  if (originalHome === undefined) delete process.env.DSH_HOME
+  else process.env.DSH_HOME = originalHome
+  rmSync(isolationHome, { recursive: true, force: true })
+})
 
 /**
  * A fake agent registry: one root agent whose status the test can flip.
@@ -270,6 +288,87 @@ test('a subagent session is silent unless the setting opts in', async () => {
     await new Promise((resolve) => setTimeout(resolve, 20))
     assert.equal(calls.length, 0, 'a subagent turn does not notify by default')
   })
+})
+
+test('a 飞书 webhook configured through the RPC carries keyword + signature', async () => {
+  const { ctx, handlers, routes } = fakeCtx()
+  apply(ctx, { local: { enabled: false } })
+
+  const saved = await rpc(routes, 'set', {
+    patch: {
+      webhooks: {
+        feishu: {
+          enabled: true,
+          url: 'https://open.feishu.cn/open-apis/bot/v2/hook/TESTHOOK123',
+          includeSummary: true,
+          keyword: 'dsh-notify-hub',
+          secret: 'SIGNINGSECRET',
+        },
+      },
+    },
+  })
+  assert.equal(saved.ok, true)
+
+  const view = await rpc(routes, 'get')
+  assert.equal(view.value.settings.webhooks.feishu.keyword, 'dsh-notify-hub')
+  assert.equal(view.value.settings.webhooks.feishu.secretConfigured, true)
+  assert.equal(JSON.stringify(view.value).includes('SIGNINGSECRET'), false, 'the signing secret never rides the wire')
+  const row = view.value.status.channels.find((entry) => entry.id === 'feishu')
+  assert.ok(row.detail.includes('关键词✓') && row.detail.includes('签名✓'), row.detail)
+
+  await withFetch(async () => okResponse, async (calls) => {
+    const session = { id: 's1', header: { cwd: '/path/to/proj' } }
+    const emit = (type, data, seq, time) => {
+      for (const handler of handlers.get('session/event')) handler(session, { type, data, seq, time })
+    }
+    emit('session/title', { title: '部署生产环境' }, 1, 1_000)
+    emit('turn/start', { turn: 1 }, 2, 2_000)
+    emit('turn/end', { turn: 1, reason: { kind: 'completed' } }, 3, 5_000)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0].url, 'https://open.feishu.cn/open-apis/bot/v2/hook/TESTHOOK123')
+    const body = JSON.parse(calls[0].init.body)
+    assert.equal(body.msg_type, 'text')
+    assert.ok(body.content.text.startsWith('[dsh-notify-hub] 【✅ 任务完成】'), body.content.text.slice(0, 40))
+    assert.ok(body.content.text.includes('部署生产环境'))
+    assert.match(body.timestamp, /^\d{10}$/)
+    assert.equal(body.sign, feishuSign('SIGNINGSECRET', body.timestamp), 'signed with the configured secret')
+
+    const status = await rpc(routes, 'get')
+    const entry = status.value.history[0]
+    assert.equal(entry.channel, 'feishu')
+    assert.equal(entry.ok, true)
+  })
+})
+
+test('a 飞书 signature failure is reported and never leaks the secret', async () => {
+  const { ctx, routes } = fakeCtx()
+  apply(ctx, { local: { enabled: false }, delivery: { retries: 0 } })
+  await rpc(routes, 'set', {
+    patch: {
+      webhooks: {
+        feishu: {
+          enabled: true,
+          url: 'https://open.feishu.cn/open-apis/bot/v2/hook/TESTHOOK123',
+          keyword: 'dsh-notify-hub',
+          secret: 'SIGNINGSECRET',
+        },
+      },
+    },
+  })
+
+  await withFetch(
+    async () => ({ ok: false, status: 400, text: async () => '{"code":19021,"msg":"sign match fail"}' }),
+    async () => {
+      const result = await rpc(routes, 'test', { channel: 'feishu' })
+      assert.equal(result.value.results[0].ok, false)
+      assert.equal(result.value.results[0].error.includes('SIGNINGSECRET'), false)
+      assert.ok(result.value.results[0].error.includes('19021'), 'the provider error is surfaced')
+      const status = await rpc(routes, 'get')
+      assert.equal(JSON.stringify(status.value).includes('SIGNINGSECRET'), false)
+    },
+  )
 })
 
 test('notifySubagents switches a subagent session back on', async () => {

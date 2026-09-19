@@ -28,11 +28,26 @@ and adds a channel neither of them has.
 | **Bark** | Official or self-hosted. Group aggregation, push level (active / timeSensitive / passive / critical), custom sound |
 | **移动新消息** | China Mobile 5G message. Long-connection push of text and (optionally) rich media |
 | **Desktop** | Windows toast (AppUserModelId registered on first use, NotifyIcon balloon fallback), macOS `osascript`, Linux `notify-send` |
-| **Feishu / WeCom / DingTalk / Slack / Discord** | Each channel's native `text` payload — paste the group-bot webhook URL |
+| **Feishu / WeCom / DingTalk / Slack / Discord** | Each channel's native `text` payload — paste the group-bot webhook URL. **Feishu also supports the bot's security settings**: custom keyword and signature verification (below) |
 | **Custom webhook** | Structured JSON: kind, title, sessionId, turn, durationMs, reason, tools, time |
 
 Every channel is independent: it must be switched on **and** fully configured, or
 the section reports it as unconfigured.
+
+### Feishu bot security
+
+A Feishu custom bot offers three security settings; the plugin implements the two
+that need the caller's cooperation:
+
+| Feishu console | Setting | Behaviour |
+| --- | --- | --- |
+| **自定义关键词** (custom keyword) | `Custom keyword` | The message text must contain the keyword or Feishu answers `19024 Key Words Not Found`. A configured keyword is prepended as `[keyword] ` (skipped when the body already contains it) |
+| **签名校验** (signature) | `Signature secret` | Every request carries `timestamp` (seconds, string) and `sign`. Algorithm: `stringToSign = timestamp + "\n" + secret`, then `Base64(HMAC-SHA256(key = stringToSign, message = ""))` — the joined string is the **key**, over an **empty** message. The secret stays on the Host; the UI shows a masked status only |
+| IP 白名单 (IP allowlist) | — | Needs nothing from the plugin (Feishu sees the source IP); add your proxy's egress IP in the console |
+
+WeCom / DingTalk / Slack / Discord render neither field: those providers either
+do not offer it or (DingTalk) sign in the URL query string, which is left for a
+later change against the same capability table.
 
 ### Events
 

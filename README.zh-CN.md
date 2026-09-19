@@ -24,10 +24,22 @@
 | **Bark** | 官方或自建 Bark Server。支持 Group 聚合、推送级别（active / timeSensitive / passive / critical）、自定义提示音 |
 | **移动新消息** | 中国移动 5G 消息。长连接推送，支持纯文本与富媒体（图片/文件，见下文协议） |
 | **桌面通知** | Windows 聚焦式 Toast（自动注册 AUMID，失败回退气泡通知）、macOS `osascript`、Linux `notify-send` |
-| **飞书 / 企业微信 / 钉钉 / Slack / Discord** | 内置各自的 `text` 消息体，复制群机器人 Webhook 地址即可 |
+| **飞书 / 企业微信 / 钉钉 / Slack / Discord** | 内置各自的 `text` 消息体，复制群机器人 Webhook 地址即可。**飞书另支持机器人安全设置**：自定义关键词、签名校验（见下文） |
 | **自定义 Webhook** | 发送结构化 JSON（kind / title / sessionId / turn / durationMs / reason / tools / time） |
 
 每个通道独立开关；**开关打开且凭据填写完整**才会投递，否则在设置页显示「未配置」。
+
+### 飞书机器人安全设置
+
+飞书自定义机器人有三种安全设置，本插件实现了其中需要调用方配合的两种：
+
+| 飞书控制台 | 插件设置项 | 行为 |
+| --- | --- | --- |
+| **自定义关键词** | `自定义关键词` | 消息正文必须包含关键词，否则飞书返回 `19024 Key Words Not Found`。填写后关键词会自动以 `[关键词] ` 形式加在正文最前面（正文里已有则不重复添加） |
+| **签名校验** | `签名校验密钥` | 每次请求自动在 body 带上 `timestamp`（秒级字符串）与 `sign`。算法：`stringToSign = timestamp + "\n" + 密钥`，用 **stringToSign 作为 HMAC 密钥**对**空字符串**做 HmacSHA256 再 Base64，即 `Base64(HMAC-SHA256(key=stringToSign, msg=""))`。密钥只保存在 Host 端，界面只显示脱敏状态 |
+| IP 白名单 | — | 无需插件配合（飞书看的是请求来源 IP）；代理出口 IP 需自行加入白名单 |
+
+`企业微信 / 钉钉 / Slack / Discord` 不会显示这两个输入框——对应的 provider 要么不支持，要么把签名放在 URL 查询串（钉钉），留待后续按同一张能力表扩展。
 
 ### 触发事件
 

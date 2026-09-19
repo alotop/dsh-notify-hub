@@ -103,7 +103,15 @@ function hostPayload() {
       },
       local: { enabled: true, sound: true },
       webhooks: {
-        feishu: { enabled: false, includeSummary: false, configured: false, masked: '' },
+        feishu: {
+          enabled: true,
+          includeSummary: true,
+          configured: true,
+          masked: '••••••••HOOK',
+          keyword: 'dsh-notify-hub',
+          secretConfigured: true,
+          secretMasked: '••••••••T123',
+        },
         wecom: { enabled: false, includeSummary: false, configured: false, masked: '' },
         dingtalk: { enabled: false, includeSummary: false, configured: false, masked: '' },
         slack: { enabled: false, includeSummary: false, configured: false, masked: '' },
@@ -286,6 +294,10 @@ test('the section renders every channel, event, and the delivery log', async () 
   }
   assert.ok(text.includes('••••••••TKEY'), 'the masked Bark endpoint renders')
   assert.ok(text.includes('138••••00'), 'the masked 移动新消息 recipient renders')
+  // 飞书 bot security (自定义关键词 / 签名校验): the keyword is echoed, the secret is masked only.
+  assert.ok(text.includes('机器人安全设置'), 'the 飞书 security block renders')
+  assert.ok(text.includes('dsh-notify-hub'), 'the configured keyword is echoed back')
+  assert.ok(text.includes('••••••••T123'), 'the signing secret renders as a mask only')
   assert.ok(text.includes('deploy'), 'the configured rule renders')
   assert.ok(text.includes('mobile'), 'the configured route renders')
   assert.ok(text.includes('proj'), 'history rows render')

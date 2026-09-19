@@ -3,7 +3,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { ChannelError, ERROR_CODES, postJson, redact, retryableStatus, sleep } from '../lib/channels/http.js'
 import { buildBarkTestPayload, sendBark } from '../lib/channels/bark.js'
-import { deliverWebhook, webhookPayload } from '../lib/channels/webhook.js'
+import { deliverWebhook, applyKeyword, feishuSign, signPayload, webhookPayload } from '../lib/channels/webhook.js'
 import {
   appleScriptQuote,
   buildWindowsScript,
@@ -163,6 +163,40 @@ test('buildBarkTestPayload is a valid Bark payload', () => {
   assert.ok(payload.body.length > 0)
 })
 
+test('applyKeyword satisfies 自定义关键词 without duplicating it', () => {
+  assert.equal(applyKeyword('【✅ 任务完成】proj', 'dsh-notify-hub'), '[dsh-notify-hub] 【✅ 任务完成】proj')
+  assert.equal(applyKeyword('【✅ 任务完成】proj', '  dsh-notify-hub  '), '[dsh-notify-hub] 【✅ 任务完成】proj')
+  assert.equal(applyKeyword('[dsh-notify-hub] 已经带了', 'dsh-notify-hub'), '[dsh-notify-hub] 已经带了')
+  assert.equal(applyKeyword('正文里出现 dsh-notify-hub 也算', 'dsh-notify-hub'), '正文里出现 dsh-notify-hub 也算')
+  assert.equal(applyKeyword('原样', ''), '原样')
+  assert.equal(applyKeyword('原样', '   '), '原样')
+})
+
+test('feishuSign matches independently computed vectors', () => {
+  // Cross-checked against .NET System.Security.Cryptography.HMACSHA256:
+  //   Base64(HMAC-SHA256(key = "<timestamp>\n<secret>", message = ""))
+  assert.equal(feishuSign('demo', 1599360473), 'l1N0gAcBjdwBvGm1xMjOF0XSyaLRpR7tuO5dHfhAYc8=')
+  assert.equal(feishuSign('demo', 1700000000), '8oT2n3SMKFfEnDoiwer8BUM/SjKLwe9SqoEIHlhDTKo=')
+  // A UTF-8 secret: the key bytes are the UTF-8 encoding of the joined string.
+  assert.equal(feishuSign('dsh-notify-hub-密钥', 1700000000), 'RRl7iFgr5l2fe1W1rEjk90E6e6gXl4QTPH79iteJC1s=')
+  // The classic wrong construction (key = secret, message = stringToSign) differs.
+  assert.notEqual(feishuSign('demo', 1599360473), 'DkEDUyVoOOJ539qBvUgMyzkzIdRWlf4e/V3Rq+ONJnQ=')
+  assert.equal(feishuSign('demo', '1599360473'), 'l1N0gAcBjdwBvGm1xMjOF0XSyaLRpR7tuO5dHfhAYc8=', 'a string timestamp signs identically')
+})
+
+test('signPayload adds timestamp + sign only where the provider expects them', () => {
+  const payload = { msg_type: 'text', content: { text: 'T' } }
+  const signed = signPayload('feishu', payload, 'demo', 1_599_360_473_000)
+  assert.equal(signed.timestamp, '1599360473', 'seconds, as a string')
+  assert.equal(signed.sign, 'l1N0gAcBjdwBvGm1xMjOF0XSyaLRpR7tuO5dHfhAYc8=')
+  assert.deepEqual(signed.content, { text: 'T' }, 'the original body survives')
+  assert.equal(Object.keys(signed)[0], 'timestamp', 'timestamp/sign come first')
+
+  assert.deepEqual(signPayload('feishu', payload, '', 1_599_360_473_000), payload, 'no secret, no fields')
+  assert.deepEqual(signPayload('feishu', payload, '   ', 1_599_360_473_000), payload, 'blank secret, no fields')
+  assert.deepEqual(signPayload('slack', payload, 'demo', 1_599_360_473_000), payload, 'other providers are untouched')
+})
+
 test('webhookPayload matches each preset', () => {
   const env = envelope({ turn: 3, durationMs: 1_000 })
   assert.deepEqual(webhookPayload('feishu', env, 'T'), { msg_type: 'text', content: { text: 'T' } })
@@ -204,6 +238,46 @@ test('deliverWebhook validates the URL and posts the preset body', async () => {
   assert.equal(body.msg_type, 'text')
   assert.ok(body.content.text.includes('任务完成'))
   assert.ok(body.content.text.includes('会话：s1'))
+})
+
+test('deliverWebhook applies 自定义关键词 and 签名校验 to the request body', async () => {
+  const fetchImpl = fakeFetch([response(200)])
+  const result = await deliverWebhook('feishu', 'https://open.feishu.cn/hook/1', envelope(), {
+    fetchImpl,
+    retries: 0,
+    locale: 'zh',
+    includeSummary: true,
+    keyword: 'dsh-notify-hub',
+    secret: 'demo',
+    now: 1_599_360_473_000,
+  })
+  assert.equal(result.attempts, 1)
+  const body = JSON.parse(fetchImpl.calls[0].init.body)
+  assert.equal(body.msg_type, 'text')
+  assert.ok(body.content.text.startsWith('[dsh-notify-hub] 【✅ 任务完成】'), `keyword must lead the body: ${body.content.text.slice(0, 40)}`)
+  assert.equal(body.timestamp, '1599360473', 'seconds since the epoch, as a string')
+  assert.equal(body.sign, 'l1N0gAcBjdwBvGm1xMjOF0XSyaLRpR7tuO5dHfhAYc8=', 'the exact 飞书 signature')
+})
+
+test('a retried webhook resends the identical signed body', async () => {
+  const fetchImpl = fakeFetch([response(500), response(200)])
+  const seen = []
+  const wrapper = async (url, init) => {
+    seen.push(JSON.parse(init.body))
+    return fetchImpl(url, init)
+  }
+  const result = await deliverWebhook('feishu', 'https://open.feishu.cn/hook/1', envelope(), {
+    fetchImpl: wrapper,
+    retries: 1,
+    retryBaseMs: 1,
+    keyword: 'dsh-notify-hub',
+    secret: 'demo',
+    now: 1_599_360_473_000,
+  })
+  assert.equal(result.attempts, 2)
+  assert.equal(seen.length, 2)
+  assert.deepEqual(seen[0], seen[1], 'one signature per delivery; the retry reuses it')
+  assert.equal(seen[0].sign, feishuSign('demo', '1599360473'))
 })
 
 test('deliverWebhook redacts a secret URL from its failure message', async () => {
