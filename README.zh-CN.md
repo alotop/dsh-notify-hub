@@ -78,25 +78,30 @@
 
 前提：DSH ≥ 0.1.5-rc.2（Web profile）。插件不需要编译，`lib/` 即为可直接运行的 ESM 与浏览器 bundle。
 
-### 方式 A：打成 tgz 后安装（推荐）
-
-`link:` 安装时 Node 会从**链接的真实路径**解析依赖，因此工作区外的目录可能找不到 `@deepseek-ai/schemastery`；打成 tarball 由 pnpm 复制进 profile 目录即可，`dsh-notify-bark` 用的就是这种方式。
+### 方式 A：从 npm 安装（推荐）
 
 ```powershell
-cd /path/to/dsh-notify-hub
-npm pack                      # 生成 dsh-notify-hub-0.1.0.tgz
-dsh plugin --profile web add .\dsh-notify-hub-0.1.0.tgz
+dsh plugin --profile web add @alotop/dsh-notify-hub
 ```
 
-### 方式 B：手动加入 Web profile
+### 方式 B：从 tarball 安装（离线 / 指定版本）
+
+```powershell
+npm pack                                        # 生成 alotop-dsh-notify-hub-0.3.0.tgz
+dsh plugin --profile web add .\alotop-dsh-notify-hub-0.3.0.tgz
+```
+
+> 不要用 `link:` 指向本仓库目录：Node 会从**链接的真实路径**解析依赖，仓库里的 `node_modules` 不会被 profile 看到，运行时会找不到 `@deepseek-ai/schemastery`。npm 包或 tarball 由 pnpm 复制进 profile，才是可靠的装法。
+
+### 方式 C：手动加入 Web profile
 
 编辑 `%USERPROFILE%\.dsh\profiles\web\package.json`：
 
 ```jsonc
 {
-  "dsh": { "profile": { "bundles": [ /* …既有… */ "dsh-notify-hub" ] } },
+  "dsh": { "profile": { "bundles": [ /* …既有… */ "@alotop/dsh-notify-hub" ] } },
   "dependencies": {
-    "dsh-notify-hub": "file:/path/to/dsh-notify-hub/dsh-notify-hub-0.1.0.tgz"
+    "@alotop/dsh-notify-hub": "^0.3.0"
   }
 }
 ```
@@ -111,6 +116,27 @@ dsh plugin --profile web add .\dsh-notify-hub-0.1.0.tgz
 
 * 首次启动时，若本插件的 Bark 地址为空，会自动从 `$DSH_HOME/settings.yaml` 的旧 `bark:` 段**迁移一次**（只读旧文件、写入新命名空间），日志会打印一行提示。设置 `migrateLegacyBark: false` 可关闭。
 * 迁移后建议移除 `dsh-notify-bark`，否则同一个回合会收到两条 Bark 推送。
+
+---
+
+## 开发与发布
+
+```powershell
+npm ci            # 只有开发/测试用依赖（@deepseek-ai/schemastery）；运行时由 DSH 提供
+npm run check     # 客户端 bundle 守卫 + 全部用例
+npm run pack:check # 审计将要发布到 npm 的 tarball 内容
+```
+
+发布由 **打标签** 触发（`.github/workflows/release.yml`）：
+
+```powershell
+# 先把 package.json 的 version 改好并提交，然后
+git tag v0.3.0 && git push origin v0.3.0
+```
+
+流程：校验 `tag` 与 `package.json` 版本一致 → `npm ci` → `npm run check` → `npm run pack:check` → `npm publish`（OIDC Trusted Publishing + provenance，仓库里不存 npm token）→ 自动创建 GitHub Release。`ci.yml` 在每次分支推送与 PR 上跑同样的检查，但**永不发布**。
+
+首次需要到 npmjs.com 的包设置里配置一次 Trusted Publisher：仓库 `alotop/dsh-notify-hub`、workflow `release.yml`、environment 留空。若改用令牌发布，加 `NPM_TOKEN` secret 并给 setup-node 传 `registry-url` + `NODE_AUTH_TOKEN`。
 
 ---
 

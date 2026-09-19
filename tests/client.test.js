@@ -8,6 +8,11 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
+/** The package manifest — the single source of truth for the registration id. */
+function packageJson() {
+  return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+}
+
 /** Minimal React stand-in: element records plus inert hooks. */
 const react = {
   createElement(type, props, ...children) {
@@ -63,7 +68,7 @@ function loadBundle() {
   // eslint-disable-next-line no-new-func
   new Function('window', 'document', source)(window, document)
   assert.ok(registration, 'the bundle must register a factory')
-  assert.equal(registration.id, 'dsh-notify-hub')
+  assert.equal(registration.id, packageJson().name, 'the registration id must be the package name (the package row key)')
   return registration.factory((specifier) => {
     if (specifier === 'react') return react
     if (specifier === '@deepseek-ai/dsh-client-store') return store

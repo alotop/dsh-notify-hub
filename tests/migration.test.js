@@ -1,6 +1,7 @@
 /** Legacy Bark adoption from the existing settings document. */
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { join } from 'node:path'
 import { readLegacyBarkUrl, settingsFilePath } from '../lib/migration.js'
 
 const documented = [
@@ -48,6 +49,9 @@ test('ignores a nested bark key and refuses a flow mapping', () => {
 })
 
 test('the settings file path follows DSH_HOME', () => {
-  assert.equal(settingsFilePath({ DSH_HOME: '/path/to/.dsh' }), '/path/to/.dsh\\settings.yaml')
+  // Built with the platform's own join so the assertion holds on Windows and
+  // Linux alike (CI runs ubuntu-latest).
+  assert.equal(settingsFilePath({ DSH_HOME: join('/srv', 'dsh') }), join('/srv', 'dsh', 'settings.yaml'))
+  assert.equal(settingsFilePath({ DSH_HOME: '/path/to/.dsh' }), join('/path/to/.dsh', 'settings.yaml'))
   assert.ok(settingsFilePath({}).endsWith('settings.yaml'))
 })

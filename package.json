@@ -1,9 +1,22 @@
 {
-  "name": "dsh-notify-hub",
-  "version": "0.2.0",
-  "description": "通知集合（Notification Hub）：DSH Host 端通知中枢，整合 Bark 推送、多路 Webhook（飞书/企微/钉钉/Slack/Discord/自定义）、原生桌面通知，并新增「移动新消息」5G 消息推送通道。设置页通过专用 RPC 读写 Host 配置，全部密钥脱敏不回传浏览器。",
+  "name": "@alotop/dsh-notify-hub",
+  "version": "0.3.0",
+  "description": "通知集合（Notification Hub）：DSH Host 端通知中枢，整合 Bark 推送、多路 Webhook（飞书自定义关键词与签名校验 / 企微 / 钉钉 / Slack / Discord / 自定义）、原生桌面通知，并新增「移动新消息」5G 消息推送通道。设置页通过专用 RPC 读写 Host 配置，全部密钥脱敏不回传浏览器。",
   "license": "MIT",
+  "author": "alotop",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alotop/dsh-notify-hub.git"
+  },
+  "bugs": {
+    "url": "https://github.com/alotop/dsh-notify-hub/issues"
+  },
+  "homepage": "https://github.com/alotop/dsh-notify-hub#readme",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
   },
@@ -27,15 +40,19 @@
     "test": "node scripts/run-tests.mjs",
     "test:tap": "node --test tests/",
     "check:client": "node scripts/check-client.mjs",
-    "check": "node scripts/check-client.mjs && node scripts/run-tests.mjs"
+    "check": "node scripts/check-client.mjs && node scripts/run-tests.mjs",
+    "pack:check": "npm pack --dry-run --json > pack.json && node scripts/inspect-tarball.mjs"
   },
   "keywords": [
     "deepseek-harness",
     "dsh",
     "dsh-plugin",
+    "cordis",
     "notification",
     "bark",
     "webhook",
+    "feishu",
+    "wecom",
     "cmcc",
     "5g-message"
   ],
@@ -62,5 +79,8 @@
     "@deepseek-ai/schemastery": {
       "optional": true
     }
+  },
+  "devDependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
   }
 }

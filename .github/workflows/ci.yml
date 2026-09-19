@@ -1,0 +1,40 @@
+name: CI
+
+# Every branch push and every pull request. A tag push is handled by release.yml,
+# which publishes; this workflow never publishes anything.
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The Host half imports @deepseek-ai/schemastery for its settings schema.
+      # DSH supplies it at runtime, so it is a devDependency here: it gives this
+      # repository a reproducible `npm ci` (and a working `npm test` for anyone
+      # who clones it) without ever installing into a user's profile.
+      - name: Install dev dependencies
+        run: npm ci
+
+      # Client-bundle guard plus the whole test suite.
+      - name: Client bundle guard and tests
+        run: npm run check
+
+      # Catches two regressions that are invisible locally: a package.json
+      # "files" entry that drops something the runtime needs, and development
+      # material (tests, caches, a stray settings document) reaching the
+      # published artifact.
+      - name: Inspect the published tarball
+        run: npm run pack:check

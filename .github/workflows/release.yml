@@ -1,0 +1,74 @@
+name: Release
+
+# Only a tag push publishes. Branch pushes are covered by ci.yml, so a merge can
+# never publish by accident.
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Least privilege. `contents: write` lets the run create the GitHub Release;
+# `id-token: write` is what authorizes npm to accept the publish through OIDC
+# Trusted Publishing — no long-lived npm token is stored in this repository.
+#
+# One-time setup on npmjs.com (Package → Settings → Trusted Publisher): point it
+# at this repository, workflow `release.yml`, environment left empty. To use a
+# classic token instead, add the `NPM_TOKEN` secret and pass
+# `registry-url` + `NODE_AUTH_TOKEN` to setup-node / npm publish.
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Deliberately no `registry-url`: that would write an .npmrc pointing at
+      # NODE_AUTH_TOKEN, and an unset token would compete with OIDC. The public
+      # registry is npm's default anyway.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Trusted Publishing requires npm >= 11.5.1.
+      - name: Use a recent npm
+        run: npm install -g npm@latest
+
+      - name: Install dev dependencies
+        run: npm ci
+
+      # A tag that disagrees with package.json would publish the wrong version
+      # under the right name, which is unrecoverable. Fail before publishing.
+      - name: Verify the tag matches package.json
+        run: |
+          set -eu
+          pkg="$(node -p "require('./package.json').version")"
+          tag="${GITHUB_REF_NAME#v}"
+          echo "tag=${GITHUB_REF_NAME} package=${pkg}"
+          if [ "${pkg}" != "${tag}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${pkg}"
+            exit 1
+          fi
+
+      - name: Client bundle guard and tests
+        run: npm run check
+
+      # What ships to npm IS the plugin: the loader imports lib/ on the Host and
+      # the browser fetches lib/client.js from the installed package. A missing
+      # file or a leaked test fixture must fail here, not for a user.
+      - name: Inspect the published tarball
+        run: npm run pack:check
+
+      # Provenance and OIDC both come from the id-token permission above.
+      - name: Publish to npm
+        run: npm publish
+
+      - name: Create the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          name: ${{ github.ref_name }}

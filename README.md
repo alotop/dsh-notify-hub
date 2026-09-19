@@ -105,27 +105,33 @@ Everything is configured in **Settings → 通知集合**:
 Requires DSH ≥ 0.1.5-rc.2 (web profile). There is no build step: `lib/` holds the
 runnable ESM host half and the browser bundle.
 
-### Option A — pack and install (recommended)
-
-With `link:` installs Node resolves dependencies from the **linked real path**, so
-a directory outside the profile may not find `@deepseek-ai/schemastery`. A tarball
-is copied into the profile by pnpm — the same way `dsh-notify-bark` is installed.
+### Option A — from npm (recommended)
 
 ```powershell
-cd /path/to/dsh-notify-hub
-npm pack                      # produces dsh-notify-hub-0.1.0.tgz
-dsh plugin --profile web add .\dsh-notify-hub-0.1.0.tgz
+dsh plugin --profile web add @alotop/dsh-notify-hub
 ```
 
-### Option B — wire it into the web profile by hand
+### Option B — from a tarball (offline / pinned)
+
+```powershell
+npm pack                                        # produces alotop-dsh-notify-hub-0.3.0.tgz
+dsh plugin --profile web add .\alotop-dsh-notify-hub-0.3.0.tgz
+```
+
+> Do not use `link:` to this checkout: Node resolves dependencies from the
+> **linked real path**, so the repository's own `node_modules` is invisible to
+> the profile and `@deepseek-ai/schemastery` would not resolve at runtime. An npm
+> package or a tarball is copied into the profile by pnpm, which is what works.
+
+### Option C — wire it into the web profile by hand
 
 Edit `%USERPROFILE%\.dsh\profiles\web\package.json`:
 
 ```jsonc
 {
-  "dsh": { "profile": { "bundles": [ /* …existing… */ "dsh-notify-hub" ] } },
+  "dsh": { "profile": { "bundles": [ /* …existing… */ "@alotop/dsh-notify-hub" ] } },
   "dependencies": {
-    "dsh-notify-hub": "file:/path/to/dsh-notify-hub/dsh-notify-hub-0.1.0.tgz"
+    "@alotop/dsh-notify-hub": "^0.3.0"
   }
 }
 ```
@@ -136,6 +142,34 @@ then run `pnpm install` inside `%USERPROFILE%\.dsh\profiles\web`.
 
 A new bundle needs a **dsh web restart**; later installs/updates need
 `pnpm install` plus a restart (changes to `cordis.patch.yml` itself hot-apply).
+
+---
+
+## Development and release
+
+```powershell
+npm ci             # dev/test dependency only (@deepseek-ai/schemastery); DSH supplies it at runtime
+npm run check      # client-bundle guard + the whole test suite
+npm run pack:check # audit what would be published to npm
+```
+
+Publishing is driven by a **tag push** (`.github/workflows/release.yml`):
+
+```powershell
+# bump package.json's version, commit, then
+git tag v0.3.0 && git push origin v0.3.0
+```
+
+The run verifies `tag` ↔ `package.json`, installs with `npm ci`, runs
+`npm run check` and `npm run pack:check`, publishes with OIDC Trusted Publishing
+and provenance (no npm token is stored in the repository), and creates the GitHub
+Release. `ci.yml` runs the same checks on every branch push and pull request and
+never publishes.
+
+One-time setup on npmjs.com (package → Settings → Trusted Publisher): repository
+`alotop/dsh-notify-hub`, workflow `release.yml`, environment empty. To publish
+with a token instead, add an `NPM_TOKEN` secret and pass `registry-url` +
+`NODE_AUTH_TOKEN` to setup-node.
 
 ### Living with dsh-notify-bark
 
