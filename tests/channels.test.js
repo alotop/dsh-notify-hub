@@ -175,6 +175,13 @@ test('applyKeyword satisfies 自定义关键词 without duplicating it', () => {
 test('feishuSign matches independently computed vectors', () => {
   // Cross-checked against .NET System.Security.Cryptography.HMACSHA256:
   //   Base64(HMAC-SHA256(key = "<timestamp>\n<secret>", message = ""))
+  //
+  // Provenance of the inputs, so a future audit does not have to re-derive it:
+  // the secret `demo` and the timestamp 1599360473 are the pair used in 飞书's own
+  // custom-bot documentation, so every vector below is publicly reproducible and
+  // reveals nothing about any deployment. `dsh-notify-hub-密钥` is an invented
+  // value that exists only to cover the UTF-8 case. A signature is one-way in any
+  // case: it cannot be reversed into the secret it was computed from.
   assert.equal(feishuSign('demo', 1599360473), 'l1N0gAcBjdwBvGm1xMjOF0XSyaLRpR7tuO5dHfhAYc8=')
   assert.equal(feishuSign('demo', 1700000000), '8oT2n3SMKFfEnDoiwer8BUM/SjKLwe9SqoEIHlhDTKo=')
   // A UTF-8 secret: the key bytes are the UTF-8 encoding of the joined string.
