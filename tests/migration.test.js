@@ -1,0 +1,53 @@
+/** Legacy Bark adoption from the existing settings document. */
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readLegacyBarkUrl, settingsFilePath } from '../lib/migration.js'
+
+const documented = [
+  'ui-onboarding:',
+  '  welcomeNoticeVersion: 2026-08-13.1',
+  'bark:',
+  '  barkUrl: https://api.day.app/EXAMPLEKEY1234',
+  '  events:',
+  '    completed: true',
+  '  group: Example Group',
+  'dsh-desktop:',
+  '  mode: compatibility',
+  '',
+].join('\n')
+
+test('reads the endpoint out of a top-level bark section', () => {
+  assert.equal(readLegacyBarkUrl(documented), 'https://api.day.app/EXAMPLEKEY1234')
+})
+
+test('unquotes quoted scalars and strips trailing comments', () => {
+  assert.equal(
+    readLegacyBarkUrl('bark:\n  barkUrl: "https://api.day.app/QUOTED"\n'),
+    'https://api.day.app/QUOTED',
+  )
+  assert.equal(
+    readLegacyBarkUrl("bark:\n  barkUrl: 'https://api.day.app/SINGLE'\n"),
+    'https://api.day.app/SINGLE',
+  )
+  assert.equal(
+    readLegacyBarkUrl('bark:\n  barkUrl: https://api.day.app/PLAIN # my phone\n'),
+    'https://api.day.app/PLAIN',
+  )
+})
+
+test('returns nothing when the section or key is absent', () => {
+  assert.equal(readLegacyBarkUrl(''), '')
+  assert.equal(readLegacyBarkUrl('other:\n  barkUrl: nope\n'), '')
+  assert.equal(readLegacyBarkUrl('bark:\n  group: only-group\n'), '')
+  assert.equal(readLegacyBarkUrl('barkUrl: https://api.day.app/ORPHAN\n'), '')
+})
+
+test('ignores a nested bark key and refuses a flow mapping', () => {
+  assert.equal(readLegacyBarkUrl('plugin:\n  bark:\n    barkUrl: https://api.day.app/NESTED\n'), '')
+  assert.equal(readLegacyBarkUrl('bark: {barkUrl: https://api.day.app/FLOW}\n'), '')
+})
+
+test('the settings file path follows DSH_HOME', () => {
+  assert.equal(settingsFilePath({ DSH_HOME: '/path/to/.dsh' }), '/path/to/.dsh\\settings.yaml')
+  assert.ok(settingsFilePath({}).endsWith('settings.yaml'))
+})

@@ -1,0 +1,12 @@
+# dsh-notify-hub bundle patch: inserts its plugin row into the profile roster.
+# Install with `dsh plugin --profile web add <path-or-tgz>`; the patch layer is
+# hot-applied through Cordis HMR (watchUserPatches) without a server restart.
+#
+# The single row mounts BOTH halves:
+#   * Host   — the session/event listener, the notification hub (Bark / webhook /
+#              native desktop / 移动新消息 5G 消息), settings persistence through
+#              `ctx.settings`, and the /dsh-notify-hub loopback RPC.
+#   * Browser— the 「通知集合」 settings section (dsh.client in package.json).
+- insert:
+    - id: notify-hub
+      name: dsh-notify-hub
