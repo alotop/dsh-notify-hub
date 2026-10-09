@@ -112,9 +112,23 @@ dsh plugin --profile web add .\alotop-dsh-notify-hub-0.3.0.tgz
 
 新增 bundle 需要**重启 dsh web**；之后安装/更新只需再次 `pnpm install` + 重启（`cordis.patch.yml` 自身的改动可热加载）。
 
+### 从 DSH 0.1.x 升级到 0.2：旧设置会自己回来
+
+0.2 用「插件 entry 的 `Config` + profile patch」取代了 0.1.x 的全局 `$DSH_HOME/settings.yaml`，而它那次**一次性导入只处理能按 entry id 寻址的段**。本插件当时还没有声明 `Config`，于是 `notify-hub:` 段被留在改名后的 `settings.yaml.imported` 里 —— 界面因此显示成「未配置」。
+
+现在插件会：
+
+* 声明 `Config`（`export const Config`），配置以 **entry id `notify-hub`** 寻址，因此 0.2 的设置页能编辑它、profile patch 能保存它；
+* 首次启动且尚未配置时**自动读回**旧段：能写回 profile 就写回（日志 `已从 … 恢复旧设置（notify-hub 段）`），万一写不回去，也至少让本次运行先用上旧值（日志会提示你到设置页保存一次以固化）；
+* 保存走 `configEditor`，改完**即时生效、无需重启**（可编辑字段都是 volatile 叶子）。
+
+### 未配置的通道：点「测试」不会真发
+
+通道没配置（或开关关闭）时点「测试」，界面直接提示**「未配置」/「未启用」**，不会发任何真实请求；服务端也会拒绝同一种情况，所以不存在"因为没配好，所以测试失败"这种误导。只有配置完整的通道才会真正投递测试消息。
+
 ### 与 dsh-notify-bark 共存
 
-* 首次启动时，若本插件的 Bark 地址为空，会自动从 `$DSH_HOME/settings.yaml` 的旧 `bark:` 段**迁移一次**（只读旧文件、写入新命名空间），日志会打印一行提示。设置 `migrateLegacyBark: false` 可关闭。
+* 首次启动时，若本插件的 Bark 地址为空，会自动从旧设置文档的 `bark:` 段**迁移一次**（只读旧文件），日志会打印一行提示。设置 `migrateLegacyBark: false` 可关闭。
 * 迁移后建议移除 `dsh-notify-bark`，否则同一个回合会收到两条 Bark 推送。
 
 ---

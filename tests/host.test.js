@@ -55,7 +55,9 @@ function fakeCtx(options = {}) {
   const logs = []
   let userPatch = {}
 
-  const settingsService = {
+  // 0.1.x supplies a settings service with `register`; a DSH 0.2 profile supplies
+  // one without it, and configuration then comes from the entry's Config instead.
+  const settingsService = options.settingsService ?? {
     register(namespace, schema, registerOptions) {
       const base = registerOptions?.base ?? {}
       return {
@@ -78,13 +80,15 @@ function fakeCtx(options = {}) {
     },
   }
 
-  const services = { settings: settingsService, agents, connection, webServer }
+  const services = { settings: settingsService, agents, connection, webServer, configEditor: options.configEditor }
 
   const ctx = {
     logger: {
       info: (message) => logs.push(message),
       warn: (message) => logs.push(message),
     },
+    // The plugin's own profile entry: how the 0.2 config editor addresses it.
+    fiber: options.fiber ?? { entry: { id: 'notify-hub' } },
     on(event, handler) {
       if (!handlers.has(event)) handlers.set(event, [])
       handlers.get(event).push(handler)
@@ -103,6 +107,23 @@ function fakeCtx(options = {}) {
     },
   }
   return { ctx, handlers, routes, effects, logs, writeUserSection: (patch) => { userPatch = deepMerge(userPatch, patch) } }
+}
+
+/**
+ * A duck-typed DSH 0.2 config tree: the loader hands a plugin its config with
+ * every editable *leaf* parsed into a stable reference read with `.get()`, backed
+ * by the live entry configuration. Reading through the references is what makes an
+ * edit apply without a restart, so that is exactly what these tests exercise.
+ */
+function liveConfig(store) {
+  const wrap = (target, path) => {
+    if (Array.isArray(target)) return target
+    if (target !== null && typeof target === 'object') {
+      return Object.fromEntries(Object.keys(target).map((key) => [key, wrap(target[key], [...path, key])]))
+    }
+    return { get: () => path.reduce((node, key) => node?.[key], store) }
+  }
+  return wrap(store, [])
 }
 
 /** A fake IncomingMessage carrying one JSON body. */
@@ -439,13 +460,84 @@ test('a delivery failure is recorded and reported without leaking the endpoint',
   })
 })
 
-test('the cmcc probe reports its state through the RPC', async () => {
+test('the cmcc probe answers an unconfigured channel instead of dialing out', async () => {
   const { ctx, routes } = fakeCtx()
   apply(ctx, { local: { enabled: false }, cmcc: { apiKey: '', to: '' } })
   const result = await rpc(routes, 'probe')
   assert.equal(result.ok, true)
   assert.equal(result.value.ok, false)
-  assert.match(result.value.error, /API Key/)
+  assert.equal(result.value.unconfigured, true, 'the click is a configuration question')
+  assert.equal(result.value.reason, 'unconfigured')
+  assert.equal(result.value.error, '未配置')
+})
+
+test('the cmcc probe reports the channel as disabled when it is switched off', async () => {
+  const { ctx, routes } = fakeCtx()
+  apply(ctx, {
+    local: { enabled: false },
+    cmcc: { enabled: false, apiKey: 'ak_testkey123456', to: '13800138000' },
+  })
+  const result = await rpc(routes, 'probe')
+  assert.equal(result.value.unconfigured, true)
+  assert.equal(result.value.reason, 'disabled')
+  assert.equal(result.value.error, '未启用')
+})
+
+test('a DSH 0.2 entry config is read live and edits persist through the config editor', async () => {
+  // The entry configuration the loader owns — this is the store the volatile
+  // references read through, and what `configEditor.edit()` replaces.
+  const store = {
+    bark: { enabled: true, url: 'https://api.day.app/OLDKEY0001', group: 'Example Group' },
+    cmcc: { enabled: true, apiKey: 'ak_testkey123456', to: '13800138000' },
+  }
+  /** Every write the plugin asked the editor for. */
+  const edits = []
+  const configEditor = {
+    async edit(entry, thunk) {
+      const next = thunk()
+      edits.push({ entry, next })
+      // The real editor writes the profile patch and the loader re-resolves the
+      // entry, so the references see the new values. Model that here.
+      for (const [key, value] of Object.entries(next)) store[key] = value
+    },
+  }
+  const { ctx, routes, logs } = fakeCtx({
+    settingsService: {},           // 0.2 has no `register`
+    configEditor,
+    fiber: { entry: { id: 'notify-hub' } },
+  })
+  apply(ctx, liveConfig(store))
+  await new Promise((resolve) => setTimeout(resolve, 5))
+
+  // Read path: the values come from the entry config, so Bark is NOT "未配置".
+  const before = await rpc(routes, 'get')
+  assert.equal(before.value.settings.bark.configured, true, 'the entry config is the source of truth')
+  assert.equal(before.value.settings.bark.masked, '••••••••0001')
+  assert.equal(before.value.settings.cmcc.configured, true)
+  assert.ok(logs.some((line) => line.includes('config=entry-config')), 'the active seam is reported')
+
+  // Write path: a save reaches the config editor with the WHOLE config, so the
+  // credentials the patch does not mention survive the round trip.
+  const saved = await rpc(routes, 'set', { patch: { bark: { url: 'https://api.day.app/NEWKEY0002' } } })
+  assert.equal(saved.ok, true)
+  assert.equal(edits.length, 1)
+  assert.equal(edits[0].entry.id, 'notify-hub', 'the write addresses this plugin entry')
+  assert.equal(edits[0].next.bark.url, 'https://api.day.app/NEWKEY0002')
+  assert.equal(edits[0].next.bark.group, 'Example Group', 'untouched fields are preserved')
+  assert.equal(edits[0].next.cmcc.apiKey, 'ak_testkey123456', 'a secret the patch omits is not dropped')
+
+  const after = await rpc(routes, 'get')
+  assert.equal(after.value.settings.bark.masked, '••••••••0002', 'the new value is live without a restart')
+})
+
+test('a 0.2 profile without a config editor refuses a write instead of losing it', async () => {
+  const store = { bark: { url: 'https://api.day.app/OLDKEY0001' } }
+  const { ctx, routes } = fakeCtx({ settingsService: {}, configEditor: undefined })
+  apply(ctx, liveConfig(store))
+  const saved = await rpc(routes, 'set', { patch: { bark: { url: 'https://api.day.app/NEWKEY0002' } } })
+  assert.equal(saved.ok, false)
+  assert.match(saved.error.message, /设置服务不可用/)
+  assert.equal(store.bark.url, 'https://api.day.app/OLDKEY0001', 'nothing was silently dropped')
 })
 
 test('the legacy Bark endpoint is adopted once from the settings document', async () => {

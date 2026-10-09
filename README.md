@@ -143,6 +143,34 @@ then run `pnpm install` inside `%USERPROFILE%\.dsh\profiles\web`.
 A new bundle needs a **dsh web restart**; later installs/updates need
 `pnpm install` plus a restart (changes to `cordis.patch.yml` itself hot-apply).
 
+### Upgrading from DSH 0.1.x to 0.2: your settings come back
+
+DSH 0.2 replaced the 0.1.x global `$DSH_HOME/settings.yaml` with "the plugin
+entry's `Config` + the profile patch", and its **one-shot import only handled
+sections it could address by entry id**. This plugin had not declared a `Config`
+yet, so its `notify-hub:` section was left behind in the renamed
+`settings.yaml.imported` — which is why the section showed「未配置」.
+
+The plugin now:
+
+* declares `Config` (`export const Config`), so its configuration is addressed by
+  the entry id **`notify-hub`** — the 0.2 settings page can edit it and the profile
+  patch can persist it;
+* reads that leftover section back on the first start while nothing is
+  configured: it writes it into the profile when it can (log:
+  `已从 … 恢复旧设置（notify-hub 段）`), and even when the write is refused it keeps
+  the recovered values live for the session, telling you to save once to make them
+  stick;
+* persists saves through `configEditor`, so an edit applies **immediately, with no
+  restart** (every editable field is a volatile leaf).
+
+### Testing an unconfigured channel sends nothing
+
+Clicking **Test** on a channel that is unconfigured (or switched off) answers
+「未配置」/「未启用」 instead of sending anything, and the Host refuses the same
+case — so a channel can never be reported as failing merely because it was not set
+up yet. Only a fully configured channel really delivers a test message.
+
 ---
 
 ## Development and release

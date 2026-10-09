@@ -381,3 +381,85 @@ test('the controller reports a load failure and round-trips every endpoint', asy
   await controller.clearHistory()
   assert.ok(connection.calls.some((entry) => entry.endpoint === 'clearHistory'))
 })
+
+test('a channel that is not ready answers locally instead of testing for real', async () => {
+  const { bundle, component, t } = setup()
+
+  /** A controller whose status rows say what the test needs. */
+  const withRows = async (patch) => {
+    const payload = hostPayload()
+    payload.status.channels = payload.status.channels.map((row) => ({ ...row, ...(patch[row.id] ?? {}) }))
+    const connection = fakeConnection(payload)
+    const controller = new bundle.HubSectionController(connection)
+    await controller.load()
+    return { controller, connection }
+  }
+  const testCalls = (connection) => connection.calls.filter((entry) => entry.endpoint === 'test').length
+
+  // Unconfigured: the click never reaches the network, and the notice is the
+  // configuration answer rather than a failure.
+  const off = await withRows({ bark: { configured: false } })
+  assert.equal(off.controller.skipReason('bark'), 'unconfigured')
+  await off.controller.test('bark')
+  assert.equal(testCalls(off.connection), 0, 'an unconfigured channel sends no test request')
+  assert.deepEqual(off.controller.store.get().testResult, { ok: false, skipped: 'unconfigured' })
+  const rendered = textOf(component({
+    t,
+    controller: off.controller,
+    useSnapshot: (selector) => selector(off.controller.store.get()),
+  })).join(' ')
+  assert.ok(rendered.includes('未配置，未发送测试'), 'the section says so in words')
+
+  // Switched off is a distinct answer, and equally silent.
+  const disabled = await withRows({ bark: { enabled: false } })
+  assert.equal(disabled.controller.skipReason('bark'), 'disabled')
+  await disabled.controller.test('bark')
+  assert.equal(testCalls(disabled.connection), 0)
+  assert.deepEqual(disabled.controller.store.get().testResult, { ok: false, skipped: 'disabled' })
+
+  // Configured: the real test goes out, exactly once.
+  const ready = await withRows({})
+  assert.equal(ready.controller.skipReason('bark'), null)
+  await ready.controller.test('bark')
+  assert.equal(testCalls(ready.connection), 1, 'a configured channel is tested for real')
+
+  // "Test every channel" with nothing ready is answered, not sent. The desktop
+  // channel counts as ready, so it has to be switched off to reach this state.
+  const empty = await withRows({ bark: { configured: false }, cmcc: { configured: false }, local: { enabled: false } })
+  await empty.controller.test('all')
+  assert.equal(testCalls(empty.connection), 0)
+  assert.equal(empty.controller.store.get().testResult.skipped, 'unconfigured')
+
+  // The desktop channel needs no credential, so it is never skipped for one.
+  assert.equal(ready.controller.skipReason('local'), null)
+  assert.equal(empty.controller.skipReason('local'), null)
+
+  // A probe on an unconfigured 移动新消息 is refused locally too.
+  const probeOff = await withRows({ cmcc: { configured: false } })
+  assert.equal(probeOff.controller.skipReason('probe'), null)
+  assert.equal(probeOff.controller.skipReason('cmcc-media'), 'unconfigured')
+  await probeOff.controller.probe()
+  assert.equal(probeOff.connection.calls.filter((entry) => entry.endpoint === 'probe').length, 0)
+  assert.deepEqual(probeOff.controller.store.get().testResult, { ok: false, skipped: 'unconfigured' })
+})
+
+test('a Host that refuses an unready channel renders the same notice', async () => {
+  const { bundle } = setup()
+  const payload = hostPayload()
+  const connection = fakeConnection(payload)
+  // The Host is the authority: it can refuse even when the client view was stale.
+  connection.rpc.call = async (channel, endpoint, request) => {
+    connection.calls.push({ channel, endpoint, request })
+    if (endpoint === 'get') return { ok: true, value: payload }
+    if (endpoint === 'test') {
+      return { ok: true, value: { results: [{ channel: request.channel, ok: false, unconfigured: true, reason: 'unconfigured', error: '未配置' }] } }
+    }
+    return { ok: false, error: { message: `unknown endpoint ${endpoint}` } }
+  }
+  const controller = new bundle.HubSectionController(connection)
+  await controller.load()
+  await controller.test('bark')
+  const result = controller.store.get().testResult
+  assert.deepEqual(result, { ok: false, skipped: 'unconfigured' })
+  assert.equal(result.message, undefined, 'a refusal is not reported as an error message')
+})

@@ -176,20 +176,40 @@ test('history keeps the newest entries first and honors the limit', async () => 
 })
 
 test('test() reports per-channel results and skips unconfigured channels', async () => {
-  const { hub } = makeHub({ bark: { url: 'https://api.day.app/KEY' } })
-  const result = await hub.test('bark')
+  const configured = makeHub({ bark: { url: 'https://api.day.app/KEY' } })
+  const result = await configured.hub.test('bark')
   assert.equal(result.results.length, 1)
   assert.equal(result.results[0].ok, true)
   assert.equal(result.results[0].channel, 'bark')
+  assert.equal(configured.fetchImpl.calls.length, 1, 'a configured channel really is tested')
 
-  const all = await hub.test('all')
+  const all = await configured.hub.test('all')
   assert.deepEqual(all.results.map((entry) => entry.channel), ['bark'])
 
-  // An explicitly named channel is attempted even when it is not configured,
-  // so the section can show the real reason instead of "nothing to test".
-  const unconfigured = await hub.test('cmcc')
+  // A channel that is not ready is ANSWERED, not attempted: the click is a
+  // configuration question, and firing a real request at an empty endpoint would
+  // only stack a provider error on top of it.
+  const unconfigured = await configured.hub.test('cmcc')
   assert.equal(unconfigured.results[0].ok, false)
-  assert.ok(unconfigured.results[0].error.length > 0)
+  assert.equal(unconfigured.results[0].unconfigured, true)
+  assert.equal(unconfigured.results[0].reason, 'unconfigured')
+  assert.equal(unconfigured.results[0].error, '未配置')
+
+  // Nothing left the process for either refusal.
+  const barkless = makeHub({})
+  const noBark = await barkless.hub.test('bark')
+  assert.equal(noBark.results[0].reason, 'unconfigured')
+  assert.equal(barkless.fetchImpl.calls.length, 0, 'an unconfigured channel makes no request')
+  const cmccSent = makeHub({}, { cmcc: cmccStub(false) })
+  await cmccSent.hub.test('cmcc')
+  assert.equal(cmccSent.cmcc.sent.length, 0, 'an unconfigured cmcc channel sends nothing')
+
+  // Switched off is a different answer from unconfigured, and is also never sent.
+  const off = makeHub({ bark: { enabled: false, url: 'https://api.day.app/KEY' } })
+  const disabled = await off.hub.test('bark')
+  assert.equal(disabled.results[0].reason, 'disabled')
+  assert.equal(disabled.results[0].error, '未启用')
+  assert.equal(off.fetchImpl.calls.length, 0, 'a disabled channel makes no request')
 
   const empty = makeHub({})
   await assert.rejects(() => empty.hub.test('all'), /没有已启用/)
